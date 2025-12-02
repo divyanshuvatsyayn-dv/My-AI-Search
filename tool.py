@@ -2,10 +2,10 @@ import streamlit as st
 from duckduckgo_search import DDGS
 from groq import Groq
 
-# --- 1. PRO PAGE CONFIG ---
+# --- 1. CONFIG ---
 st.set_page_config(page_title="Divyanshu AI", page_icon="🤖", layout="centered")
 
-# --- 2. CUSTOM CSS (STYLING) ---
+# --- 2. STYLE ---
 st.markdown("""
     <style>
     .main-title {
@@ -22,82 +22,77 @@ st.markdown("""
         color: #888;
         font-size: 1.1rem;
     }
-    .stChatInput {
-        position: fixed;
-        bottom: 20px;
-    }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. HEADER UI ---
+# --- 3. HEADER ---
 st.markdown('<div class="main-title">🤖 Divyanshu AI Pro</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">Powered by Groq & Llama 3.3 | Live Search Engine</div>', unsafe_allow_html=True)
 st.markdown("---")
 
-# --- 4. SECRETS MANAGEMENT ---
+# --- 4. SECRETS CHECK ---
 try:
     api_key = st.secrets["GROQ_API_KEY"]
 except:
-    st.error("⚠️ API Key not found in Secrets!")
+    st.error("⚠️ API Key not found! Please set GROQ_API_KEY in Secrets.")
     st.stop()
 
 client = Groq(api_key=api_key)
 
-# --- 5. CHAT HISTORY SETUP ---
+# --- 5. CHAT HISTORY ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Display old messages
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- 6. MAIN CHAT LOGIC ---
-if prompt := st.chat_input("Kuch puchiye... (Ex: Who won IPL 2024?)"):
+# --- 6. MAIN LOGIC (FIXED) ---
+if prompt := st.chat_input("Kuch puchiye..."):
     
-    # User Message Show karein
-    st.chat_message("user").markdown(prompt)
+    # User Msg
     st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
 
-    # AI Response Start
+    # AI Msg
     with st.chat_message("assistant"):
-        with st.spinner("Searching & Thinking..."):
-            # A. Internet Search
+        with st.spinner("Searching..."):
+            # Search
             try:
                 results = DDGS().text(prompt, max_results=3)
                 context = ""
                 if results:
                     for r in results:
-                        context += f"[{r['title']}]({r['href']}): {r['body']}\n"
+                        context += f"Source: {r['title']} - {r['body']}\n"
             except:
                 context = "No internet results found."
 
-            # B. Prepare Prompt
+            # Prompt
             full_prompt = f"""
-            You are a smart AI assistant. 
             User Question: {prompt}
-            Internet Data: {context}
-            
-            Answer in Hinglish (Hindi+English). Be friendly and accurate.
-            Do not mention 'According to internet data' repeatedly.
+            Internet Info: {context}
+            Answer in Hinglish (Hindi+English). Be helpful and concise.
             """
-
-            # C. Generate Stream Response
+            
+            # --- FIX: Manual Streaming ---
             stream = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": full_prompt}],
                 stream=True
             )
             
-            # D. Typewriter Effect
-            response = st.write_stream(stream)
+            # Text ko saaf tarike se nikalna
+            response_placeholder = st.empty()
+            full_response = ""
             
-    # Save AI Message
-    st.session_state.messages.append({"role": "assistant", "content": response})
-
-# --- SIDEBAR FOR CLEAR CHAT ---
-with st.sidebar:
-    if st.button("🗑️ Clear Chat"):
-        st.session_state.messages = []
-        st.rerun()
-    st.info("Built by Code Crafter Divyanshu")
+            for chunk in stream:
+                content = chunk.choices[0].delta.content
+                if content:
+                    full_response += content
+                    response_placeholder.markdown(full_response + "▌")
+            
+            response_placeholder.markdown(full_response)
+            
+    # Save AI Msg
+    st.session_state.messages.append({"role": "assistant", "content": full_response})
