@@ -22,12 +22,16 @@ st.markdown("""
         color: #888;
         font-size: 1.1rem;
     }
+    .image-box {
+        border-radius: 10px;
+        margin-bottom: 10px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
 # --- 3. HEADER ---
 st.markdown('<div class="main-title">🤖 Divyanshu AI Pro</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">Powered by Groq & Llama 3.3 | Live Search Engine</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">With Image Search & Live Answers</div>', unsafe_allow_html=True)
 st.markdown("---")
 
 # --- 4. SECRETS CHECK ---
@@ -46,53 +50,78 @@ if "messages" not in st.session_state:
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+        # Show images if stored in history
+        if "images" in message and message["images"]:
+            cols = st.columns(len(message["images"]))
+            for i, img_url in enumerate(message["images"]):
+                with cols[i]:
+                    st.image(img_url, use_container_width=True)
 
-# --- 6. MAIN LOGIC (FIXED) ---
-if prompt := st.chat_input("Kuch puchiye..."):
+# --- 6. MAIN LOGIC ---
+if prompt := st.chat_input("Kuch puchiye... (Ex: Show me Ferrari car images)"):
     
-    # User Msg
+    # A. User Msg Show
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # AI Msg
+    # B. AI Processing
     with st.chat_message("assistant"):
-        with st.spinner("Searching..."):
-            # Search
+        
+        # 1. Image Search (New Feature) 🖼️
+        image_urls = []
+        with st.status("Searching Internet & Images...", expanded=True) as status:
             try:
-                results = DDGS().text(prompt, max_results=3)
+                # Fetch Images
+                img_results = DDGS().images(prompt, max_results=3)
+                if img_results:
+                    image_urls = [img['image'] for img in img_results]
+                
+                # Fetch Text
+                txt_results = DDGS().text(prompt, max_results=3)
                 context = ""
-                if results:
-                    for r in results:
-                        context += f"Source: {r['title']} - {r['body']}\n"
+                if txt_results:
+                    for r in txt_results:
+                        context += f"Info: {r['body']}\n"
+                
+                status.update(label="Found results!", state="complete", expanded=False)
             except:
-                context = "No internet results found."
+                context = "No results found."
 
-            # Prompt
-            full_prompt = f"""
-            User Question: {prompt}
-            Internet Info: {context}
-            Answer in Hinglish (Hindi+English). Be helpful and concise.
-            """
+        # 2. Display Images First
+        if image_urls:
+            cols = st.columns(len(image_urls))
+            for i, img_url in enumerate(image_urls):
+                with cols[i]:
+                    st.image(img_url, use_container_width=True)
+
+        # 3. Generate Answer
+        full_prompt = f"""
+        User Question: {prompt}
+        Internet Info: {context}
+        Answer in Hinglish (Hindi+English). Be helpful.
+        """
+        
+        stream = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": full_prompt}],
+            stream=True
+        )
+        
+        # Typewriter Effect
+        response_placeholder = st.empty()
+        full_response = ""
+        for chunk in stream:
+            content = chunk.choices[0].delta.content
+            if content:
+                full_response += content
+                response_placeholder.markdown(full_response + "▌")
+        
+        response_placeholder.markdown(full_response)
             
-            # --- FIX: Manual Streaming ---
-            stream = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": full_prompt}],
-                stream=True
-            )
-            
-            # Text ko saaf tarike se nikalna
-            response_placeholder = st.empty()
-            full_response = ""
-            
-            for chunk in stream:
-                content = chunk.choices[0].delta.content
-                if content:
-                    full_response += content
-                    response_placeholder.markdown(full_response + "▌")
-            
-            response_placeholder.markdown(full_response)
-            
-    # Save AI Msg
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
+    # Save to History
+    st.session_state.messages.append({
+        "role": "assistant", 
+        "content": full_response,
+        "images": image_urls  # Saving images to history
+    })
