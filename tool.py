@@ -2,63 +2,50 @@ import streamlit as st
 from duckduckgo_search import DDGS
 from groq import Groq
 
-# --- 1. SETUP ---
+# --- PAGE SETUP ---
 st.set_page_config(page_title="Divyanshu AI", page_icon="🚀")
-st.title("🚀 Divyanshu's Super Fast AI")
-st.caption("Powered by Groq (Latest Llama 3.3 Model)")
+st.title("🚀 Divyanshu's AI Search")
+st.caption("Free for everyone! No Key needed.")
 
-# --- 2. SIDEBAR ---
-with st.sidebar:
-    st.header("⚙️ Settings")
-    api_key = st.text_input("Groq API Key yahan daalein:", type="password")
-    st.info("Key nahi hai? [console.groq.com](https://console.groq.com/keys) se free lein.")
+# --- GET KEY FROM SECRETS (Hidden) ---
+try:
+    api_key = st.secrets["GROQ_API_KEY"]
+except:
+    st.error("Owner ne API Key set nahi ki hai.")
+    st.stop()
 
-# --- 3. SEARCH FUNCTION ---
+# --- SEARCH FUNCTION ---
 def search_web(query):
     try:
         return DDGS().text(query, max_results=3)
     except:
         return None
 
-# --- 4. MAIN APP ---
-query = st.text_input("Kuch bhi punchein:", placeholder="Ex: Who is the richest person in 2024?")
+# --- MAIN APP ---
+query = st.text_input("Kuch bhi punchein:", placeholder="Ex: Top 5 movies of 2024")
 
 if query:
-    if not api_key:
-        st.error("⚠️ Pehle Sidebar mein Groq API Key daalein!")
-    else:
-        try:
-            client = Groq(api_key=api_key)
+    try:
+        client = Groq(api_key=api_key)
+        
+        with st.spinner('Thinking...'):
+            # 1. Search
+            results = search_web(query)
+            context = ""
+            if results:
+                for r in results:
+                    context += f"Info: {r['body']}\n\n"
             
-            with st.spinner('Checking internet...'):
-                # A. Search
-                web_results = search_web(query)
-                context = ""
-                if web_results:
-                    for r in web_results:
-                        context += f"Info: {r['body']}\n\n"
-                
-                # B. Ask AI (Updated Model Name)
-                prompt = f"""
-                You are Divyanshu's AI assistant.
-                Question: {query}
-                Info: {context}
-                
-                Answer in Hinglish (Hindi + English mix).
-                """
-                
-                # --- FIX: Newest Model ---
-                completion = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile", 
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.7
-                )
-                
-                # C. Show Answer
-                response = completion.choices[0].message.content
-                st.success("✅ Jawab:")
-                st.write(response)
-                
-        except Exception as e:
-            st.error(f"❌ Error: {e}")
-            st.write("Shayad API Key galat hai, check karein.")
+            # 2. AI Answer
+            prompt = f"User Question: {query}\nInfo: {context}\nAnswer in Hinglish:"
+            
+            completion = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            
+            st.success("✅ Jawab:")
+            st.write(completion.choices[0].message.content)
+            
+    except Exception as e:
+        st.error(f"Error: {e}")
