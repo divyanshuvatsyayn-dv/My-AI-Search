@@ -2,31 +2,31 @@ import streamlit as st
 from duckduckgo_search import DDGS
 from groq import Groq
 
-# --- 1. CONFIG ---
-st.set_page_config(page_title="Divyanshu Super AI", page_icon="🎯", layout="wide")
+# --- 1. CONFIGURATION ---
+st.set_page_config(page_title="Divyanshu Smart AI", page_icon="🧠", layout="wide")
 
-# --- 2. STYLE ---
+# --- 2. STYLING ---
 st.markdown("""
     <style>
     .main-title {
         font-size: 3rem;
         font-weight: 800;
-        background: -webkit-linear-gradient(left, #000046, #1CB5E0);
+        background: -webkit-linear-gradient(left, #6a11cb, #2575fc);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         text-align: center;
     }
     .sub-title {
         text-align: center;
-        color: #666;
+        color: #555;
         font-size: 1.2rem;
     }
     </style>
 """, unsafe_allow_html=True)
 
 # --- 3. HEADER ---
-st.markdown('<div class="main-title">🎯 Divyanshu\'s Accurate AI</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">High Accuracy Mode | Text, Images & Videos</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">🧠 Divyanshu\'s Smart AI</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">Search + Internal Knowledge | Images & Videos</div>', unsafe_allow_html=True)
 
 # --- 4. SECRETS ---
 try:
@@ -51,13 +51,11 @@ for message in st.session_state.messages:
                     st.image(img, use_container_width=True)
         if "videos" in message and message["videos"]:
             for vid in message["videos"]:
-                if "youtube.com" in vid or "youtu.be" in vid:
+                if "http" in vid:
                     st.video(vid)
-                else:
-                    st.markdown(f"[Watch Video]({vid})")
 
 # --- 6. MAIN LOGIC ---
-if prompt := st.chat_input("Sahi jaankari puchiye... (Ex: Govindganj vidhansabha kaha hai?)"):
+if prompt := st.chat_input("Puchiye... (Ex: Govindganj vidhansabha kaha hai?)"):
 
     # User Msg
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -66,39 +64,35 @@ if prompt := st.chat_input("Sahi jaankari puchiye... (Ex: Govindganj vidhansabha
 
     # AI Processing
     with st.chat_message("assistant"):
-        with st.spinner("Checking facts carefully..."):
+        with st.spinner("Thinking & Searching..."):
             ddgs = DDGS()
             
-            # 1. Text Search (More Results = Better Accuracy)
+            # 1. Search Logic
             text_context = ""
+            image_urls = []
+            video_urls = []
+
             try:
-                # --- FIX: Increased results to 6 for better context ---
-                txt_results = ddgs.text(prompt, max_results=6)
+                # Text Search (Broad search)
+                txt_results = ddgs.text(prompt, max_results=5)
                 if txt_results:
                     for r in txt_results:
-                        text_context += f"Fact: {r['body']}\n"
-            except:
-                text_context = "No text info found."
-
-            # 2. Image Search
-            image_urls = []
-            try:
+                        text_context += f"Info: {r['body']}\n"
+                
+                # Image Search
                 img_results = ddgs.images(prompt, max_results=3)
                 if img_results:
                     image_urls = [img['thumbnail'] for img in img_results]
-            except:
-                pass
 
-            # 3. Video Search
-            video_urls = []
-            try:
+                # Video Search
                 vid_results = ddgs.videos(prompt, max_results=1)
                 if vid_results:
                     video_urls = [v['content'] for v in vid_results]
-            except:
-                pass
 
-            # 4. Show Media
+            except Exception as e:
+                text_context = "Search failed, using internal knowledge."
+
+            # 2. Show Media
             if image_urls:
                 cols = st.columns(len(image_urls))
                 for i, img in enumerate(image_urls):
@@ -107,29 +101,28 @@ if prompt := st.chat_input("Sahi jaankari puchiye... (Ex: Govindganj vidhansabha
             
             if video_urls:
                 for vid in video_urls:
-                    if "youtube.com" in vid or "youtu.be" in vid:
-                        st.video(vid)
+                    st.video(vid)
 
-            # 5. Strict Prompt for Accuracy
+            # 3. SMART PROMPT (Hybrid Mode)
             full_prompt = f"""
-            Role: You are a strictly factual AI assistant.
+            You are a helpful and smart AI assistant.
             User Question: {prompt}
             
-            Verified Internet Facts:
+            Internet Search Results:
             {text_context}
             
-            Instructions:
-            1. Use ONLY the 'Verified Internet Facts' above to answer.
-            2. If the facts mention the district, state it clearly.
-            3. Do not guess. If the district is not mentioned in facts, say "Mujhe pakka nahi pata" or search results check karne ko kahein.
-            4. Answer in Hinglish (Hindi+English).
+            INSTRUCTIONS:
+            1. First, check the 'Internet Search Results' above. If the answer is there, use it.
+            2. IF the answer is NOT in the search results, use your own INTERNAL KNOWLEDGE to answer correctly.
+            3. Do not say "I don't know" unless it is impossible to answer.
+            4. Answer in Hinglish (Hindi + English).
             """
 
-            # --- FIX: Low Temperature (0.2) reduces hallucinations ---
+            # 4. Generate Answer (Balanced Temperature)
             stream = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": full_prompt}],
-                temperature=0.2, 
+                temperature=0.6, # Thoda creative, thoda strict
                 stream=True
             )
 
